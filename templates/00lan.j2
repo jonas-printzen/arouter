@@ -1,0 +1,4 @@
+auto {{LOCAL_NIC}}
+iface {{LOCAL_NIC}} inet static
+  address {{ LOCAL_CIDR | ansible.utils.ipv4('address') }}
+  netmask {{ LOCAL_CIDR | ansible.utils.ipv4('netmask') }}

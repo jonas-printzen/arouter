@@ -1,0 +1,44 @@
+#
+# Do not edit! 
+#   Managed by Ansible...
+#
+
+##==== DNS =======================
+port=53
+#listen-address={{ LOCAL_CIDR | ansible.utils.ipv4('address') }}
+interface={{LOCAL_NIC}}
+local=/{{LOCAL_DOMAIN}}/
+domain={{LOCAL_DOMAIN}}
+#expand-hosts
+#resolv-file=/run/systemd/resolve/resolv.conf
+except-interface={{EXT_NIC}}
+bind-interfaces
+
+##==== DHCP =======================
+no-dhcp-interface={{EXT_NIC}}
+dhcp-range=lan,{{LOCAL_DHCP}},15m
+dhcp-option=3,{{ LOCAL_CIDR | ansible.utils.ipv4('address') }} # Gateway
+dhcp-option=6,{{ LOCAL_CIDR | ansible.utils.ipv4('address') }} # DNS
+dhcp-option=15,{{LOCAL_DOMAIN}} # Domain
+dhcp-option=119,{{LOCAL_DOMAIN}} # Domain search
+
+
+dhcp-lease-max=100
+dhcp-no-override
+dhcp-authoritative
+
+# Internal fixed IP's
+{% for arec in LOCAL_STATIC %}
+host-record={{arec.name}}.{{LOCAL_DOMAIN}},{{arec.ip}}
+{% endfor %}
+
+# MAC-locked IP's
+{% for arec in LOCAL_MACS %}
+dhcp-host={{arec.mac}},{{arec.name}},{{arec.ip}}
+{% endfor %}
+
+{% for arec in LOCAL_CNAME %}
+cname={{arec.cname}}.{{LOCAL_DOMAIN}},{{arec.name}}.{{LOCAL_DOMAIN}}
+{% endfor %}
+
+server={{DNS_FWD}}

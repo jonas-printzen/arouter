@@ -1,0 +1,83 @@
+---
+- name: Setup gateway
+  hosts: agw
+  become: true
+  vars:
+    EXT_NIC: enp1s0
+    EXT_TCP: ["ssh"]
+    # EXT_TCP: []
+    LOCAL_NIC: enp2s0
+    LOCAL_NET: 172.16/24
+    LOCAL_CIDR: 172.16.0.1/24
+    LOCAL_DOMAIN: "demo.org"
+    LOCAL_DHCP: "172.16.0.100,172.16.0.250"
+    LOCAL_STATIC:
+      - { name: agw, ip: 172.16.0.1 }
+    LOCAL_MACS:
+      - { name: asrv, mac: "52:54:00:04:09:3a", ip: 172.16.0.2 }
+      - { name: agnome, mac: "52:54:00:2f:a4:a5", ip: 172.16.0.42 }
+    LOCAL_CNAME:
+      - { cname: gw, name: agw }
+    DNS_FWD: 8.8.8.8
+  tasks:
+    - name: Setup local NIC
+      template:
+        src: 00lan.j2
+        dest: /etc/network/interfaces.d/00lan
+        mode: '0444'
+
+    - name: Install packages
+      apt:
+        state: present
+        name:
+          - nftables
+          - dnsmasq
+
+    - name: Configure nftables
+      template:
+        src: nftables.conf.j2
+        dest: /etc/nftables.conf
+        mode: '0444'
+      register: nfscfg
+
+    - name: Enable + start nftables
+      ansible.builtin.service:
+        name: nftables
+        state: restarted
+        enabled: yes
+      when: nfscfg.changed  
+
+    - name: Configure for IP-forwarding
+      lineinfile:
+        path: /etc/sysctl.conf
+        regexp: '.*net.ipv4.ip_forward.*'
+        line: 'net.ipv4.ip_forward=1'
+      register: ipfwd
+
+    - name: Apply IP-forwarding
+      command: "sysctl -p"
+      when: ipfwd.changed
+
+    - name: Configure DNS/DHCP
+      template:
+        src: dnsmasq.conf.j2
+        dest: /etc/dnsmasq.conf
+      register: dnscfg
+
+    - name: Enable + restart dnsmasq
+      ansible.builtin.service:
+        name: dnsmasq
+        state: restarted
+        enabled: yes
+      when: dnscfg.changed  
+
+    - name: Use local DNS...
+      lineinfile:
+        path: /etc/dhcp/dhclient.conf
+        regexp: '^#?prepend domain-name-servers.*$'
+        line: 'prepend domain-name-servers 127.0.0.1;'
+      register: localdns
+
+    # - name: Renew IP from DHCP 
+    #   command: dhclient -r && dhclient
+    #   when: localdns.changed
